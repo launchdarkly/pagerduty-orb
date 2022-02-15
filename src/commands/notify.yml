@@ -1,0 +1,84 @@
+description: |
+  Send a PagerDuty alert at the end of a job based on failure.
+parameters:
+  when:
+    default: on_fail
+    description: Defines when the PagerDuty incident is triggered. May be on_success, on_fail, always. Default is on_fail.
+    type: enum
+    enum:
+      - on_success
+      - on_fail
+      - always
+  action:
+    default: trigger
+    type: string
+    enum:
+      - trigger
+      - resolve
+  apitoken:
+    default: ${PAGERDUTY_APITOKEN}
+    description: Enter either your Pagertduty API token or use the CircleCI UI
+      to add your token under the 'PAGERDUTY_APITOKEN' env var. Required.
+    type: string
+  incident_description:
+    default: ""
+    description: Enter the string describing the incident.
+    type: string
+  incident_description_file:
+    default: ""
+    description: Enter the file with details describing the incident.
+    type: string
+  incident_key:
+    default: ""
+    description: >
+      A string which identifies the incident. Sending subsequent requests referencing the same service and with the
+      same incident_key will result in those requests being rejected if an open incident matches that incident_key.
+    type: string
+  incident_title:
+    default: $CIRCLE_JOB job has caused an incident
+    description: Enter custom title.
+    type: string
+  only_for_branches:
+    default: ""
+    description: |
+      If set, a comma-separated list of branches for which to send notifications. No spaces.
+    type: string
+  severity:
+    type: enum
+    default: info
+    description: The severity of the event.
+    enum:
+      - info
+      - warning
+      - error
+      - critical
+  source:
+    type: string
+    default: "CircleCI notification"
+    description: notification source
+  component:
+    type: string
+    default: "no component"
+    description: originating component
+steps:
+  - check:
+      apitoken: <<parameters.apitoken >>
+      only_for_branches: <<parameters.only_for_branches>>
+  - run:
+      when: <<parameters.when>>
+      name: Determine if notification wanted depending on job status
+      command: |
+        if [ "$PAGERDUTY_SEND" == "" ] ; then
+          echo 'export PAGERDUTY_SEND="ok"' >> $BASH_ENV
+        fi
+  - send:
+      when: <<parameters.when>>
+      action: <<parameters.action >>
+      apitoken: <<parameters.apitoken >>
+      incident_description: <<parameters.incident_description>>
+      incident_description_file: <<parameters.incident_description_file>>
+      incident_key: <<parameters.incident_key>>
+      incident_title: <<parameters.incident_title>>
+      severity: <<parameters.severity>>
+      source: <<parameters.source>>
+      component: <<parameters.component>>

@@ -1,0 +1,88 @@
+parameters:
+  when:
+    type: enum
+    enum:
+      - on_success
+      - on_fail
+      - always
+  action:
+    default: trigger
+    type: string
+    enum:
+      - trigger
+      - resolve
+  apitoken:
+    type: string
+  incident_description:
+    type: string
+  incident_description_file:
+    type: string
+  incident_key:
+    type: string
+  incident_title:
+    type: string
+  severity:
+    type: enum
+    enum:
+      - info
+      - warning
+      - error
+      - critical
+  source:
+    type: string
+  component:
+    type: string
+description: |
+  Internal command to send notifications
+steps:
+  - run:
+      name: Pagerduty - Creating Incident Alert
+      when: <<parameters.when>>
+      shell: /bin/bash
+      command: |
+        if   [ "$PAGERDUTY_SEND" == "ko" ] ; then
+          echo "Some parameter checks failed. Please review your configuration."
+          exit 1
+        elif [ "$PAGERDUTY_SEND" == "none" ] ; then
+          echo "Branch filtered out. No notification action."
+          exit 0
+        fi
+        # reset for when we have other similar steps to go through after this one
+        echo 'export PAGERDUTY_SEND=""' >> $BASH_ENV
+
+        if   [ "x<< parameters.incident_description >>" != "x" ] ; then
+          PAGERDUTY_DETAILS="<< parameters.incident_description >>"
+        elif [ "x< <parameters.incident_description_file >>" != "x" ] ; then
+          PAGERDUTY_DETAILS="$(cat << parameters.incident_description_file >> || true)"
+        fi
+        if [ "x$PAGERDUTY_DETAILS" == "x" ] ; then
+          PAGERDUTY_DETAILS="no additional details"
+        fi
+        # mute all quotes in details
+        CUSTOM_DETAILS=$(jq -nc --arg str "$PAGERDUTY_DETAILS" '{"attachment": $str}')
+
+        echo "[INFO]  queuing event to PagerDuty..."
+        echo "[INFO]  incident title: << parameters.incident_title >>"
+        echo "[INFO]  incident details: $PAGERDUTY_DETAILS"
+
+        curl \
+           --header "Content-Type: application/json" \
+           --verbose \
+           -d \
+           "{ \
+             \"routing_key\": \"<< parameters.apitoken >>\", \
+             \"event_action\": \"<< parameters.action >>\", \
+             \
+             <<# parameters.incident_key >>
+             \"dedup_key\": \"<< parameters.incident_key >>\", \
+             <</ parameters.incident_key >>
+            \
+             \"payload\": { \
+               \"summary\": \"<< parameters.incident_title >>\", \
+               \"severity\": \"<< parameters.severity >>\", \
+               \"source\": \"<< parameters.source >>\", \
+               \"component\": \"<< parameters.component >>\", \
+               \"custom_details\": $CUSTOM_DETAILS \
+              } \
+            }" \
+           https://events.pagerduty.com/v2/enqueue

@@ -1,0 +1,50 @@
+parameters:
+  apitoken:
+    type: string
+  only_for_branches:
+    type: string
+description: |
+  Internal command to check input parameters for notifications
+steps:
+  - run:
+      when: always
+      name: Check params and executor config
+      command: |
+        if ! which curl ; then
+          echo "curl not installed on the executor container"
+          echo 'export PAGERDUTY_SEND="ko"' >> $BASH_ENV
+        fi
+        if ! which jq ; then
+          echo "jq not installed on the executor container"
+          echo 'export PAGERDUTY_SEND="ko"' >> $BASH_ENV
+        fi
+
+        if [ ! -x /bin/bash ]; then
+          echo "Bash not installed on the executor container"
+          echo 'export PAGERDUTY_SEND="ko"' >> $BASH_ENV
+        fi
+
+        if [ -z "<< parameters.apitoken >>" ] ; then
+          echo "NO PAGERDUTY API TOKEN SET"
+          echo "Please input your PAGERDUTY_APITOKEN value either in the settings for this project, or as a parameter for this orb."
+          echo 'export PAGERDUTY_SEND="ko"' >> $BASH_ENV
+        fi
+  - run:
+      when: always
+      name: Check for branch filter
+      command: |
+        current_branch_in_filter=false
+        IFS="," read -ra BRANCH_FILTERS \<<< "<< parameters.only_for_branches >>"
+
+        for i in "${BRANCH_FILTERS[@]}"; do
+          if [ "${i}" == "${CIRCLE_BRANCH}" ]; then
+            current_branch_in_filter=true
+          fi
+        done
+
+        if [[ ! "x" == "x<< parameters.only_for_branches>>" && ! "$current_branch_in_filter" = true ]]; then
+          # exit the job without failing, but nothing will be done
+          echo 'export PAGERDUTY_SEND="none"' >> $BASH_ENV
+          circleci-agent step halt
+          exit 0
+        fi
